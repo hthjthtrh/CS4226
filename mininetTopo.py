@@ -11,7 +11,7 @@ from mininet.net import Mininet
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.topo import Topo
-from mininet.link import Link
+from mininet.link import TCLink
 from mininet.node import RemoteController
 
 net = None
@@ -60,8 +60,8 @@ class CustomTopo(Topo):
                     splitRow = row[0].strip().split(',')
                     node1 = addANode(splitRow[0])
                     node2 = addANode(splitRow[1])
-                    self.addLink(node1, node2) 
-                    #self.addLink(node1, node2, bw=int(splitRow[2]))                
+                    #self.addLink(node1, node2) 
+                    self.addLink(node1, node2, bw=int(splitRow[2]))                
                 lineNum += 1
 
 
@@ -84,7 +84,7 @@ def startNetwork():
     topo = CustomTopo()
 
     global net
-    net = Mininet(topo=topo, link = Link,
+    net = Mininet(topo=topo, link = TCLink,
                   controller=lambda name: RemoteController(name, ip='127.0.0.1'),
                   listenPort=6633, autoSetMacs=True)
 
