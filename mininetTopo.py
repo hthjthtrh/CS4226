@@ -17,25 +17,6 @@ from mininet.node import RemoteController
 net = None
 
 class CustomTopo(Topo):
-
-    def addANode(node):
-        type = node[0]
-        num = int(node[1:])
-        if type == 'h':
-            if node in hostSet:
-                return node
-            else:
-                n = self.addHost('h%d' % num)
-                hostSet.add(n)
-                return n
-        else:
-            if node in switchSet:
-                return node
-            else:
-                sconfig = {'dpid': "%016x" % num}
-                n = self.addSwitch('s%d' % num, **sconfig)
-                switchSet.add(n)
-                return n
 			
     def __init__(self):
         # Initialize topology
@@ -63,6 +44,24 @@ class CustomTopo(Topo):
                     self.addLink(node1, node2, bw=int(splitRow[2]))                
                 lineNum += 1
 
+        def addANode(node):
+            type = node[0]
+            num = int(node[1:])
+            if type == 'h':
+                if node in hostSet:
+                    return node
+                else:
+                    n = self.addHost('h%d' % num)
+                    hostSet.add(n)
+                    return n
+            else:
+                if node in switchSet:
+                    return node
+                else:
+                    sconfig = {'dpid': "%016x" % num}
+                    n = self.addSwitch('s%d' % num, **sconfig)
+                    switchSet.add(n)
+                    return n
 	
 	# You can write other functions as you need.
 
