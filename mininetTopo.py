@@ -19,12 +19,31 @@ net = None
 class CustomTopo(Topo):
 			
     def __init__(self):
+
+        def addANode(node):
+            type = node[0]
+            num = int(node[1:])
+            if type == 'h':
+                if node in self.hostSet:
+                    return node
+                else:
+                    n = self.addHost('h%d' % num)
+                    self.hostSet.add(n)
+                    return n
+            else:
+                if node in self.switchSet:
+                    return node
+                else:
+                    sconfig = {'dpid': "%016x" % num}
+                    n = self.addSwitch('s%d' % num, **sconfig)
+                    self.switchSet.add(n)
+                    return n
+
         # Initialize topology
         Topo.__init__(self)
 
-        hostSet = set()
-        switchSet = set()
-        linkSet = set()
+        self.hostSet = set()
+        self.switchSet = set()
 
         # read topology.in
         with open('topology.in') as topofile:
@@ -44,24 +63,7 @@ class CustomTopo(Topo):
                     self.addLink(node1, node2, bw=int(splitRow[2]))                
                 lineNum += 1
 
-        def addANode(node):
-            type = node[0]
-            num = int(node[1:])
-            if type == 'h':
-                if node in hostSet:
-                    return node
-                else:
-                    n = self.addHost('h%d' % num)
-                    hostSet.add(n)
-                    return n
-            else:
-                if node in switchSet:
-                    return node
-                else:
-                    sconfig = {'dpid': "%016x" % num}
-                    n = self.addSwitch('s%d' % num, **sconfig)
-                    switchSet.add(n)
-                    return n
+
 	
 	# You can write other functions as you need.
 
