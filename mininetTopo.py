@@ -46,7 +46,7 @@ class CustomTopo(Topo):
         linkSet = set()
 
         # read topology.in
-        with open('topology.in', newline = '') as topofile:
+        with open('topology.in') as topofile:
             content = csv.reader(topofile, delimiter = ' ')
             lineNum = 0
             numLinks = 0
