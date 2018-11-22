@@ -40,7 +40,7 @@ class CustomTopo(Topo):
                 elif lineNum <= numLinks:
                     splitRow = row[0].strip().split(',')
                     node1 = addANode(splitRow[0])
-                    node1 = addANode(splitRow[1])
+                    node2 = addANode(splitRow[1])
                     self.addLink(node1, node2, bw=int(splitRow[2]))                
                 lineNum += 1
 
