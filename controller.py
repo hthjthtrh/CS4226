@@ -5,6 +5,7 @@ Please add your matric number:
 
 import sys
 import os
+import csv
 from sets import Set
 
 from pox.core import core
@@ -26,18 +27,56 @@ class Controller(EventMixin):
         self.listenTo(core.openflow)
         core.openflow_discovery.addListeners(self)
         self.macMap = {}
+        self.flooded = {}
+        self.FIREWALL_POLICIES = []
+        self.import_firewall_rules()
         self.reset_timer = Timer(5, self.reset_mac_map, recurring=True)
+        
+
+    def import_firewall_rules(self):
+        log.debug("Importing firewall policies...")
+        
+        # read policy.in
+        with open('policy.in') as polifile:
+            content = csv.reader(polifile, delimiter = ' ')
+            lineNum = 0
+            firewall_rules = -1
+            for row in content:
+                if firewall_rules == -1:
+                    print("Number of firewall rules: {}\nNumber of QOS rules: {}".format(row[0], row[1]))
+                    firewall_rules = int(row[0])
+                    if firewall_rules <= 0:
+                        break
+                elif lineNum <= firewall_rules:
+                    self.FIREWALL_POLICIES.append(row[0].strip().split(','))
+                    print(self.FIREWALL_POLICIES[-1])
+                else:
+                    break
+                lineNum += 1
+        
+        log.debug("Firewall import complete")                    
+                
 
     def reset_mac_map(self):
+        '''
+        print("Timer up!")
+        print(self.macMap)
+        print(self.flooded)
+        '''
         for switch in self.macMap:
             self.macMap[switch].clear()
-        
+        for switch in self.flooded:
+            self.flooded[switch] = []
         
     # You can write other functions as you need.
         
     def _handle_PacketIn (self, event):    
         # install entries to the route table
         #print(self.macMap)
+
+        def src_dst_flooded(dpid, srcIP, dstIP):
+            temp = (srcIP, dstIP)
+            return temp in self.flooded[dpid]
 
         def mac_port_known(dpid, mac):
             return self.macMap[dpid].get(mac) != None
@@ -85,7 +124,7 @@ class Controller(EventMixin):
         packet = event.parsed
         dpid = dpid_to_str(event.dpid)
         ofMsg = event.ofp
-        inPort = event.port
+        in_port = event.port
         src_mac = packet.src
         dst_mac = packet.dst
         payload = packet.payload
@@ -104,10 +143,12 @@ class Controller(EventMixin):
         '''
         # map the src_mac to the port number, but keep the earliest mapping
         if not mac_port_known(dpid, src_mac):
-            self.macMap[dpid][src_mac] = inPort
+            self.macMap[dpid][src_mac] = in_port
 
         if dst_mac.is_multicast or (not mac_port_known(dpid, dst_mac)):
-            flood()
+            if not src_dst_flooded(dpid, src_ip, dst_ip):
+                self.flooded[dpid].append((src_ip, dst_ip))
+                flood()
         else:
             installFlowEntries()
             forward()  
@@ -120,19 +161,43 @@ class Controller(EventMixin):
         dpid = dpid_to_str(event.dpid)
         log.debug("Switch %s has come up.", dpid)
         self.macMap[dpid] = {}
-        
+        self.flooded[dpid] = []
         # Send the firewall policies to the switch
-        '''
+       
         def sendFirewallPolicy(connection, policy):
+            type = len(policy)
+            msg = of.ofp_flow_mod()
+            msg.priority = 100
+            msg.match.dl_type = 0x800   #IPv4
+            msg.match.nw_proto = 6  #TCP
             
-
-        for i in [FIREWALL POLICIES]:
+            if type == 1:
+                msg.match.nw_src = IPAddr(policy[0])
+                log.debug("Blocking source {}".format(policy[0]))
+            elif type == 2:
+                msg.match.nw_dst = IPAddr(policy[0])
+                msg.match.tp_dst = int(policy[1])
+                log.debug("Blocking destination {} on port {}".format(policy[0],policy[1]))
+            else:
+                msg.match.nw_src = IPAddr(policy[0])
+                msg.match.nw_dst = IPAddr(policy[1])
+                msg.match.tp_dst = int(policy[2])
+                log.debug("Blocking source {}, destination {} on port {}".format(policy[0], policy[1], policy[2]))
+            msg.actions.append(of.ofp_action_output(port = of.OFPP_NONE))
+            connection.send(msg)
+            log.debug("Firewall entry sent")
+                         
+        log.debug("Setting up firewall for Switch {}".format(dpid))
+        for i in self.FIREWALL_POLICIES:
+            
             sendFirewallPolicy(event.connection, i)
-        '''
+        
     
     def _handle_ConnectionDown(self, event):
         dpid = dpid_to_str(event.dpid)
         log.debug("Switch %s has gone down.", dpid)
+        self.macMap.pop(dpid, None)
+        self.flooded.pop(dpid, None)
 
 def launch():
     # Run discovery and spanning tree modules
