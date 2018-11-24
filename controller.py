@@ -29,40 +29,49 @@ class Controller(EventMixin):
         self.macMap = {}
         self.flooded = {}
         self.FIREWALL_POLICIES = []
-        self.import_firewall_rules()
-        self.reset_timer = Timer(5, self.reset_mac_map, recurring=True)
+        self.user_queue = {}
+        self.import_policies()
         
+        self.reset_timer = Timer(5, self.reset_stuff, recurring=True)
 
-    def import_firewall_rules(self):
-        log.debug("Importing firewall policies...")
+        self.PREMIUM_QUEUE = 1
+        self.REGULAR_QUEUE = 0
+        self.FREE_QUEUE = 2       
+
+    def import_policies(self):
         
         # read policy.in
         with open('policy.in') as polifile:
             content = csv.reader(polifile, delimiter = ' ')
             lineNum = 0
             firewall_rules = -1
+            QoS_rules = -1
             for row in content:
                 if firewall_rules == -1:
                     print("Number of firewall rules: {}\nNumber of QOS rules: {}".format(row[0], row[1]))
                     firewall_rules = int(row[0])
+                    QoS_rules = int(row[1])
                     if firewall_rules <= 0:
-                        break
+                        log.debug("no firewall rule")
+                        if QoS_rules <= 0:
+                            log.debug("no QoS rule")
+                            break
                 elif lineNum <= firewall_rules:
                     self.FIREWALL_POLICIES.append(row[0].strip().split(','))
                     print(self.FIREWALL_POLICIES[-1])
-                else:
-                    break
+                elif (lineNum - firewall_rules) <= QoS_rules:
+                    # line is QoS policy
+                    content = row[0].strip().split(',')
+                    host = IPAddr(content[0])
+                    host_type = int(content[1])
+                    self.user_queue[host] = host_type
+                    print(host, host_type)
                 lineNum += 1
         
         log.debug("Firewall import complete")                    
                 
 
-    def reset_mac_map(self):
-        '''
-        print("Timer up!")
-        print(self.macMap)
-        print(self.flooded)
-        '''
+    def reset_stuff(self):
         for switch in self.macMap:
             self.macMap[switch].clear()
         for switch in self.flooded:
@@ -73,7 +82,6 @@ class Controller(EventMixin):
     def _handle_PacketIn (self, event):    
         # install entries to the route table
         #print(self.macMap)
-
         def src_dst_flooded(dpid, srcIP, dstIP):
             temp = (srcIP, dstIP)
             return temp in self.flooded[dpid]
@@ -82,11 +90,28 @@ class Controller(EventMixin):
             return self.macMap[dpid].get(mac) != None
 
         
-        def install_enqueue(event, packet, outport, q_id):
-            a = 1
+        def install_enqueue():            
+            q_id = 2 #default free user
+            if self.user_queue.get(src_ip) != None and self.user_queue.get(dst_ip) != None:
+                q_id = max(self.user_queue[src_ip], self.user_queue[dst_ip])
+            elif self.user_queue.get(dst_ip) != None:
+                q_id = self.user_queue[dst_ip]
+            elif self.user_queue.get(src_ip) != None:
+                q_id = self.user_queue[src_ip]
+
+            log.debug("\nPutting packet of source {} destination {} into queue {}".format(src_ip, dst_ip, q_id))
+
+            msg = of.ofp_flow_mod()
+            msg.priority = 50 # lower than firewall
+            msg.data = ofMsg
+            msg.hard_timeout = 5
+            msg.match = of.ofp_match.from_packet(packet, in_port)
+            msg.actions.append(of.ofp_action_enqueue(port = self.macMap[dpid][dst_mac], queue_id = q_id))
+            event.connection.send(msg)
           
 
         # Check the packet and decide how to route the packet
+        '''
         def forward(message = None):
             log.debug("\nForwarding for packet of source h{}, destination h{}".format(src_mac, dst_mac))
             msg = of.ofp_packet_out()
@@ -110,6 +135,7 @@ class Controller(EventMixin):
             nxt_msg.hard_timeout = 5
             nxt_msg.actions.append(of.ofp_action_output(port = self.macMap[dpid][src_mac]))            
             event.connection.send(nxt_msg)
+        '''
 
 
         # When it knows nothing about the destination, flood but don't install the rule
@@ -150,11 +176,9 @@ class Controller(EventMixin):
                 self.flooded[dpid].append((src_ip, dst_ip))
                 flood()
         else:
-            installFlowEntries()
-            forward()  
-
-        #print("\n")
-
+            #installFlowEntries()
+            install_enqueue()
+            #forward()
 
 
     def _handle_ConnectionUp(self, event):
