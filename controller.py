@@ -68,7 +68,7 @@ class Controller(EventMixin):
                     print(host, host_type)
                 lineNum += 1
         
-        log.debug("Firewall import complete")                    
+        log.debug("Policy import complete")                    
                 
 
     def reset_stuff(self):
