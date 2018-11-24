@@ -44,6 +44,7 @@ class CustomTopo(Topo):
 
         self.hostSet = set()
         self.switchSet = set()
+        self.bwMap = list()
 
         # read topology.in
         with open('topology.in') as topofile:
@@ -60,24 +61,9 @@ class CustomTopo(Topo):
                     splitRow = row[0].strip().split(',')
                     node1 = addANode(splitRow[0])
                     node2 = addANode(splitRow[1])
-                    #self.addLink(node1, node2) 
-                    self.addLink(node1, node2, bw=int(splitRow[2]))                
+                    self.addLink(node1, node2)
+                    self.bwMap.append(splitRow)
                 lineNum += 1
-
-
-	
-	# You can write other functions as you need.
-
-	# Add hosts
-    # > self.addHost('h%d' % [HOST NUMBER])
-
-	# Add switches
-    # > sconfig = {'dpid': "%016x" % [SWITCH NUMBER]}
-    # > self.addSwitch('s%d' % [SWITCH NUMBER], **sconfig)
-
-	# Add links
-	# > self.addLink([HOST1], [HOST2])
-
 
 def startNetwork():
     info('** Creating the tree network\n')
@@ -91,12 +77,37 @@ def startNetwork():
     info('** Starting the network\n')
     net.start()
 
-    # Create QoS Queues
-    # > os.system('sudo ovs-vsctl -- set Port [INTERFACE] qos=@newqos \
-    #            -- --id=@newqos create QoS type=linux-htb other-config:max-rate=[LINK SPEED] queues=0=@q0,1=@q1,2=@q2 \
-    #            -- --id=@q0 create queue other-config:max-rate=[LINK SPEED] other-config:min-rate=[LINK SPEED] \
-    #            -- --id=@q1 create queue other-config:min-rate=[X] \
-    #            -- --id=@q2 create queue other-config:max-rate=[Y]')
+    info('** QoS configurations\n')
+
+    def getBW(node1, node2):
+        for link in topo.bwMap:
+            if node1 == link[0] and node2 == link[1]:
+                return int(link[2]) * 1000000
+
+    n = 0
+    for link in topo.links(True, False, True):
+        for switch in topo.switches():
+            linkInfo = link[2]
+            for i in [1, 2]:
+                if linkInfo["node%i" % (i)] == switch:
+                    n += 1
+                    port = linkInfo["port%i" % (i)]
+                    node1 = linkInfo["node1"]
+                    node2 = linkInfo["node2"]
+                    bw = getBW(node1, node2)
+                    wSpd = 0.8 * bw
+                    xSpd = 0.6 * bw
+                    ySpd = 0.3 * bw
+                    zSpd = 0.2 * bw
+                    interface = "%s-eth%s" % (switch, port)
+                    # OS system call
+                    os.system("sudo ovs-vsctl -- set Port %s qos=@newqos \
+                        -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%i queues=0=@q0,1=@q1,2=@q2 \
+                        -- --id=@q0 create queue other-config:max-rate=%i other-config:min-rate=%i \
+                        -- --id=@q1 create queue other-config:min-rate=%i \
+                        -- --id=@q2 create queue other-config:max-rate=%i" % (interface, bw, xSpd, ySpd, wSpd, zSpd))
+
+    print("Total QoS: %i" % (n))
 
     info('** Running CLI\n')
     CLI(net)
