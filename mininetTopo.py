@@ -1,6 +1,6 @@
 '''
-Please add your name:
-Please add your matric number: 
+Please add your name: Liu Renxing
+Please add your matric number: A0149943R
 '''
 
 import os
